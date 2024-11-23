@@ -36,17 +36,30 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Splitscreen
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.content.Intent
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Get shared PDF URI if available
+        val sharedPdfUri = when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                intent?.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            Intent.ACTION_VIEW -> {
+                intent?.data
+            }
+            else -> null
+        }
+
         setContent {
             PDFSplitterTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    PdfSplitterScreen()
+                    PdfSplitterScreen(sharedPdfUri)
                 }
             }
         }
@@ -56,12 +69,20 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfSplitterScreen(
+    initialPdfUri: Uri? = null,
     viewModel: PdfViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedUri by remember { mutableStateOf<Uri?>(initialPdfUri) }
     val uiState by viewModel.uiState.collectAsState()
     val pdfInfo by viewModel.pdfInfo.collectAsState()
+
+    // Load initial PDF if provided
+    LaunchedEffect(initialPdfUri) {
+        initialPdfUri?.let {
+            viewModel.loadPdfInfo(context, it)
+        }
+    }
 
     // Permission launcher
     val permissionLauncher = rememberLauncherForActivityResult(
