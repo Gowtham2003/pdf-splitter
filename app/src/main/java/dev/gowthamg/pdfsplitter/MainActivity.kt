@@ -87,6 +87,9 @@ fun PdfSplitterScreen(
     initialPdfUri: Uri? = null,
     viewModel: PdfViewModel = viewModel()
 ) {
+    var showTutorial by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
+    
     val context = LocalContext.current
     var selectedUri by remember { mutableStateOf<Uri?>(initialPdfUri) }
     val uiState by viewModel.uiState.collectAsState()
@@ -129,6 +132,20 @@ fun PdfSplitterScreen(
                         "PDF Splitter",
                         style = MaterialTheme.typography.headlineLarge
                     )
+                },
+                actions = {
+                    IconButton(onClick = { showTutorial = true }) {
+                        Icon(
+                            Icons.Rounded.Help,
+                            contentDescription = "Help"
+                        )
+                    }
+                    IconButton(onClick = { showAbout = true }) {
+                        Icon(
+                            Icons.Rounded.Info,
+                            contentDescription = "About"
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -198,6 +215,16 @@ fun PdfSplitterScreen(
             // Status messages
             StatusMessages(uiState, splitPdfs)
         }
+    }
+    
+    // Show tutorial dialog when needed
+    if (showTutorial) {
+        TutorialDialog(onDismiss = { showTutorial = false })
+    }
+
+    // Show about dialog when needed
+    if (showAbout) {
+        AboutDialog(onDismiss = { showAbout = false })
     }
 }
 
@@ -901,5 +928,232 @@ private fun SharePdfsButton(pdfs: List<SplitPdfInfo>) {
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text("Share PDFs")
+    }
+}
+
+@Composable
+fun TutorialDialog(onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "How to Use",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, "Close")
+                    }
+                }
+
+                // Tutorial steps
+                TutorialStep(
+                    icon = Icons.Rounded.FileOpen,
+                    title = "1. Select PDF",
+                    description = "Tap the 'Select PDF' button or share a PDF file from another app"
+                )
+
+                TutorialStep(
+                    icon = Icons.Rounded.Preview,
+                    title = "2. Preview and Select",
+                    description = "Preview the PDF and optionally specify page ranges to split"
+                )
+
+                TutorialStep(
+                    icon = Icons.Rounded.Splitscreen,
+                    title = "3. Split Pages",
+                    description = "Tap 'Split PDF' to extract selected pages into separate PDF files"
+                )
+
+                TutorialStep(
+                    icon = Icons.Rounded.Share,
+                    title = "4. Share",
+                    description = "Share the split PDFs directly or find them in your Documents folder"
+                )
+
+                // Tips section
+                Text(
+                    "Tips:",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BulletPoint("Use comma-separated numbers for individual pages (e.g., 1,3,5)")
+                    BulletPoint("Use hyphens for page ranges (e.g., 1-5)")
+                    BulletPoint("Combine both formats (e.g., 1-3,5,7-9)")
+                    BulletPoint("Leave page range empty to split all pages")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TutorialStep(
+    icon: ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier
+                .size(24.dp)
+                .padding(top = 4.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Column {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun BulletPoint(text: String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(
+                    MaterialTheme.colorScheme.primary,
+                    CircleShape
+                )
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "About",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, "Close")
+                    }
+                }
+
+                // App Icon
+                Icon(
+                    Icons.Rounded.PictureAsPdf,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            CircleShape
+                        )
+                        .padding(12.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+
+                // App Name and Version
+                Text(
+                    "PDF Splitter",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Repository Link
+                FilledTonalButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Gowtham2003/pdf-splitter"))
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Icon(
+                        Icons.Rounded.Code,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("View Source")
+                }
+
+                // Made with love message
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Made with ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Icon(
+                        Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        " by Gowtham",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
