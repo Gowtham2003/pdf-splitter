@@ -115,18 +115,64 @@ class PdfViewModel : ViewModel() {
                         creator = info?.getCreator() ?: "Unknown",
                         producer = info?.getProducer() ?: "Unknown",
                         creationDate = try {
+                            // Try PDF metadata first
                             info?.getMoreInfo("CreationDate")?.let { dateStr ->
-                                parsePdfDate(dateStr)?.let { calendar ->
-                                    dateFormat.format(calendar.time)
+                                if (dateStr.startsWith("D:")) {
+                                    try {
+                                        val cleanDate = dateStr.substring(2) // Remove "D:"
+                                        val year = cleanDate.substring(0, 4)
+                                        val month = cleanDate.substring(4, 6)
+                                        val day = cleanDate.substring(6, 8)
+                                        val hour = cleanDate.substring(8, 10)
+                                        val minute = cleanDate.substring(10, 12)
+                                        val second = cleanDate.substring(12, 14)
+                                        "$year-$month-$day $hour:$minute:$second"
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+                                } else null
+                            } ?: run {
+                                // Fall back to file creation time
+                                context.contentResolver.query(uri, 
+                                    arrayOf(MediaStore.MediaColumns.DATE_ADDED),
+                                    null, null, null)?.use { cursor ->
+                                    if (cursor.moveToFirst()) {
+                                        val seconds = cursor.getLong(0)
+                                        val date = Date(seconds * 1000)
+                                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(date)
+                                    } else null
                                 }
                             } ?: "Unknown"
                         } catch (e: Exception) {
                             "Unknown"
                         },
                         modificationDate = try {
+                            // Try PDF metadata first
                             info?.getMoreInfo("ModDate")?.let { dateStr ->
-                                parsePdfDate(dateStr)?.let { calendar ->
-                                    dateFormat.format(calendar.time)
+                                if (dateStr.startsWith("D:")) {
+                                    try {
+                                        val cleanDate = dateStr.substring(2) // Remove "D:"
+                                        val year = cleanDate.substring(0, 4)
+                                        val month = cleanDate.substring(4, 6)
+                                        val day = cleanDate.substring(6, 8)
+                                        val hour = cleanDate.substring(8, 10)
+                                        val minute = cleanDate.substring(10, 12)
+                                        val second = cleanDate.substring(12, 14)
+                                        "$year-$month-$day $hour:$minute:$second"
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+                                } else null
+                            } ?: run {
+                                // Fall back to file modification time
+                                context.contentResolver.query(uri,
+                                    arrayOf(MediaStore.MediaColumns.DATE_MODIFIED),
+                                    null, null, null)?.use { cursor ->
+                                    if (cursor.moveToFirst()) {
+                                        val seconds = cursor.getLong(0)
+                                        val date = Date(seconds * 1000)
+                                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(date)
+                                    } else null
                                 }
                             } ?: "Unknown"
                         } catch (e: Exception) {

@@ -114,23 +114,34 @@ fun PdfSplitterScreen(
 
             // PDF Info Card
             pdfInfo?.let { info ->
-                PdfInfoCard(info)
+                PdfInfoCard(
+                    info,
+                    onSelectNewFile = { launcher.launch("application/pdf") }
+                )
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                ProcessButton(
-                    onClick = { 
-                        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-                            permissionLauncher.launch(arrayOf(
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                Manifest.permission.READ_EXTERNAL_STORAGE
-                            ))
-                        } else {
-                            selectedUri?.let { viewModel.processFile(context, it) }
-                        }
-                    },
-                    isProcessing = uiState is UiState.Processing
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ProcessButton(
+                        onClick = { 
+                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+                                permissionLauncher.launch(arrayOf(
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                    Manifest.permission.READ_EXTERNAL_STORAGE
+                                ))
+                            } else {
+                                selectedUri?.let { viewModel.processFile(context, it) }
+                            }
+                        },
+                        isProcessing = uiState is UiState.Processing,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
             // Status messages
@@ -177,7 +188,7 @@ private fun EmptyState(onSelectFile: () -> Unit) {
 }
 
 @Composable
-fun PdfInfoCard(pdfInfo: PdfInfo) {
+fun PdfInfoCard(pdfInfo: PdfInfo, onSelectNewFile: () -> Unit) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -206,11 +217,29 @@ fun PdfInfoCard(pdfInfo: PdfInfo) {
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            Text(
-                text = pdfInfo.fileName,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = pdfInfo.fileName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                FilledTonalIconButton(
+                    onClick = onSelectNewFile,
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.FileOpen,
+                        contentDescription = "Select new PDF",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
             
             Spacer(modifier = Modifier.height(16.dp))
             
@@ -276,12 +305,13 @@ private fun InfoRow(
 @Composable
 private fun ProcessButton(
     onClick: () -> Unit,
-    isProcessing: Boolean
+    isProcessing: Boolean,
+    modifier: Modifier = Modifier
 ) {
     ElevatedButton(
         onClick = onClick,
         enabled = !isProcessing,
-        modifier = Modifier.padding(horizontal = 16.dp)
+        modifier = modifier
     ) {
         if (isProcessing) {
             CircularProgressIndicator(
