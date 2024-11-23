@@ -26,6 +26,11 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 
+data class SplitPdfInfo(
+    val uri: Uri,
+    val fileName: String
+)
+
 class PdfViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<UiState>(UiState.Initial)
     val uiState: StateFlow<UiState> = _uiState
@@ -35,6 +40,9 @@ class PdfViewModel : ViewModel() {
 
     private val _pageRange = MutableStateFlow("")
     val pageRange: StateFlow<String> = _pageRange
+
+    private val _splitPdfs = MutableStateFlow<List<SplitPdfInfo>>(emptyList())
+    val splitPdfs: StateFlow<List<SplitPdfInfo>> = _splitPdfs
 
     fun updatePageRange(range: String) {
         _pageRange.value = range
@@ -233,6 +241,15 @@ class PdfViewModel : ViewModel() {
     fun processFile(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Initialize with first page
+                _uiState.value = UiState.Processing(
+                    currentPage = 0,
+                    totalPages = 0,
+                    currentFileName = "Initializing..."
+                )
+                
+                val splitPdfs = mutableListOf<SplitPdfInfo>()
+                
                 val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     cursor.moveToFirst()
@@ -266,25 +283,23 @@ class PdfViewModel : ViewModel() {
                         )
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            // Save using MediaStore for Android 10+
                             val contentValues = ContentValues().apply {
                                 put(MediaStore.MediaColumns.DISPLAY_NAME, "page_${pageNum}.pdf")
                                 put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
                                 put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/PDF Splitter/$fileName")
                             }
 
-                            val pdfUri = context.contentResolver.insert(
+                            context.contentResolver.insert(
                                 MediaStore.Files.getContentUri("external"),
                                 contentValues
-                            )
-
-                            pdfUri?.let { uri ->
-                                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            )?.let { pdfUri ->
+                                context.contentResolver.openOutputStream(pdfUri)?.use { outputStream ->
                                     val pdfWriter = PdfWriter(outputStream)
                                     val newPdf = PdfDocument(pdfWriter)
                                     pdfDoc.copyPagesTo(pageNum, pageNum, newPdf)
                                     newPdf.close()
                                 }
+                                splitPdfs.add(SplitPdfInfo(pdfUri, "page_${pageNum}.pdf"))
                             }
                         } else {
                             // Legacy way for older Android versions
@@ -293,10 +308,11 @@ class PdfViewModel : ViewModel() {
                             val newPdf = PdfDocument(pdfWriter)
                             pdfDoc.copyPagesTo(pageNum, pageNum, newPdf)
                             newPdf.close()
+                            splitPdfs.add(SplitPdfInfo(Uri.fromFile(outputFile), "page_${pageNum}.pdf"))
                         }
                     }
                     
-                    pdfDoc.close()
+                    _splitPdfs.value = splitPdfs
                     _uiState.value = UiState.Success(
                         selectedPages.size,
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) 

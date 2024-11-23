@@ -37,6 +37,17 @@ import androidx.compose.material.icons.rounded.Splitscreen
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.ui.graphics.vector.ImageVector
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +88,7 @@ fun PdfSplitterScreen(
     val uiState by viewModel.uiState.collectAsState()
     val pdfInfo by viewModel.pdfInfo.collectAsState()
     val pageRange by viewModel.pageRange.collectAsState()
+    val splitPdfs by viewModel.splitPdfs.collectAsState()
 
     // Load initial PDF if provided
     LaunchedEffect(initialPdfUri) {
@@ -138,7 +150,9 @@ fun PdfSplitterScreen(
             pdfInfo?.let { info ->
                 PdfInfoCard(
                     info,
-                    onSelectNewFile = { launcher.launch("application/pdf") }
+                    onSelectNewFile = { launcher.launch("application/pdf") },
+                    onShowPreview = { /* Handle preview */ },
+                    selectedUri = selectedUri!!
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -178,7 +192,7 @@ fun PdfSplitterScreen(
             }
 
             // Status messages
-            StatusMessages(uiState)
+            StatusMessages(uiState, splitPdfs)
         }
     }
 }
@@ -221,19 +235,28 @@ private fun EmptyState(onSelectFile: () -> Unit) {
 }
 
 @Composable
-fun PdfInfoCard(pdfInfo: PdfInfo, onSelectNewFile: () -> Unit) {
+fun PdfInfoCard(
+    pdfInfo: PdfInfo,
+    onSelectNewFile: () -> Unit,
+    onShowPreview: () -> Unit,
+    selectedUri: Uri
+) {
+    var showPreviewDialog by remember { mutableStateOf(false) }
+    var currentPreviewPage by remember { mutableStateOf(1) }
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
     ) {
-        // Preview Section
+        // Preview Section with click handler
         pdfInfo.previewBitmap?.let { bitmap ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { showPreviewDialog = true }
             ) {
                 Image(
                     bitmap = bitmap.asImageBitmap(),
@@ -241,6 +264,23 @@ fun PdfInfoCard(pdfInfo: PdfInfo, onSelectNewFile: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
+                
+                // Preview overlay
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                            shape = CircleShape
+                        )
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Fullscreen,
+                        contentDescription = "Show preview",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
 
@@ -299,6 +339,16 @@ fun PdfInfoCard(pdfInfo: PdfInfo, onSelectNewFile: () -> Unit) {
                 value = formatDate(pdfInfo.modificationDate)
             )
         }
+    }
+
+    if (showPreviewDialog) {
+        PdfPreviewDialog(
+            pdfUri = selectedUri,
+            onDismiss = { showPreviewDialog = false },
+            currentPage = currentPreviewPage,
+            onPageSelected = { currentPreviewPage = it },
+            totalPages = pdfInfo.numberOfPages
+        )
     }
 }
 
@@ -367,7 +417,10 @@ private fun ProcessButton(
 }
 
 @Composable
-private fun StatusMessages(uiState: UiState) {
+private fun StatusMessages(
+    uiState: UiState,
+    splitPdfs: List<SplitPdfInfo> = emptyList()
+) {
     when (uiState) {
         is UiState.Processing -> {
             ProcessingProgress(
@@ -377,34 +430,41 @@ private fun StatusMessages(uiState: UiState) {
             )
         }
         is UiState.Success -> {
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            Column {
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
                 ) {
-                    Icon(
-                        Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Successfully split into ${uiState.pageCount} pages",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        "Saved to: ${uiState.outputPath}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                    )
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Successfully split into ${uiState.pageCount} pages",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            "Saved to: ${uiState.outputPath}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                        )
+                        
+                        if (splitPdfs.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            SharePdfsButton(splitPdfs)
+                        }
+                    }
                 }
             }
         }
@@ -565,5 +625,213 @@ private fun ProcessingProgress(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PdfPreviewDialog(
+    pdfUri: Uri,
+    onDismiss: () -> Unit,
+    currentPage: Int,
+    onPageSelected: (Int) -> Unit,
+    totalPages: Int
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                SmallTopAppBar(
+                    title = { Text("PDF Preview") },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Close")
+                        }
+                    }
+                )
+
+                // Current page preview
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    PdfPagePreview(
+                        pdfUri = pdfUri,
+                        pageNumber = currentPage,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Navigation buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.Center)
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = { 
+                                if (currentPage > 1) onPageSelected(currentPage - 1) 
+                            },
+                            enabled = currentPage > 1
+                        ) {
+                            Icon(Icons.Rounded.NavigateBefore, "Previous page")
+                        }
+                        
+                        IconButton(
+                            onClick = { 
+                                if (currentPage < totalPages) onPageSelected(currentPage + 1) 
+                            },
+                            enabled = currentPage < totalPages
+                        ) {
+                            Icon(Icons.Rounded.NavigateNext, "Next page")
+                        }
+                    }
+                }
+
+                // Thumbnails grid
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 100.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(totalPages) { index ->
+                        val pageNum = index + 1
+                        PdfThumbnail(
+                            pdfUri = pdfUri,
+                            pageNumber = pageNum,
+                            isSelected = pageNum == currentPage,
+                            onClick = { onPageSelected(pageNum) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PdfThumbnail(
+    pdfUri: Uri,
+    pageNumber: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    ElevatedCard(
+        onClick = onClick,
+        modifier = Modifier
+            .aspectRatio(0.707f),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (isSelected) 
+                MaterialTheme.colorScheme.primaryContainer 
+            else 
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            PdfPagePreview(
+                pdfUri = pdfUri,
+                pageNumber = pageNumber,
+                modifier = Modifier.fillMaxSize()
+            )
+            Text(
+                text = pageNumber.toString(),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                        shape = MaterialTheme.shapes.small
+                    )
+                    .padding(4.dp),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    }
+}
+
+@Composable
+fun PdfPagePreview(
+    pdfUri: Uri,
+    pageNumber: Int,
+    modifier: Modifier = Modifier
+) {
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val context = LocalContext.current
+
+    LaunchedEffect(pdfUri, pageNumber) {
+        withContext(Dispatchers.IO) {
+            try {
+                val tempFile = File(context.cacheDir, "temp_preview.pdf")
+                context.contentResolver.openInputStream(pdfUri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                    val renderer = PdfRenderer(fd)
+                    renderer.openPage(pageNumber - 1).use { page ->
+                        val newBitmap = Bitmap.createBitmap(
+                            page.width,
+                            page.height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        page.render(newBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmap = newBitmap
+                    }
+                }
+                tempFile.delete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    bitmap?.let { bmp ->
+        Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = "Page $pageNumber",
+            modifier = modifier,
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun SharePdfsButton(pdfs: List<SplitPdfInfo>) {
+    val context = LocalContext.current
+    
+    FilledTonalButton(
+        onClick = {
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND_MULTIPLE
+                type = "application/pdf"
+                putParcelableArrayListExtra(
+                    Intent.EXTRA_STREAM,
+                    ArrayList(pdfs.map { it.uri })
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share PDFs"))
+        }
+    ) {
+        Icon(
+            Icons.Rounded.Share,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Share PDFs")
     }
 }
