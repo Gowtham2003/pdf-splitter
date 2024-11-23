@@ -76,6 +76,7 @@ fun PdfSplitterScreen(
     var selectedUri by remember { mutableStateOf<Uri?>(initialPdfUri) }
     val uiState by viewModel.uiState.collectAsState()
     val pdfInfo by viewModel.pdfInfo.collectAsState()
+    val pageRange by viewModel.pageRange.collectAsState()
 
     // Load initial PDF if provided
     LaunchedEffect(initialPdfUri) {
@@ -142,6 +143,15 @@ fun PdfSplitterScreen(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
+                PageRangeSelector(
+                    totalPages = info.numberOfPages,
+                    onRangeChange = { viewModel.updatePageRange(it) },
+                    rangeText = pageRange,
+                    isValid = viewModel.isValidPageRange(pageRange, info.numberOfPages)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -160,6 +170,8 @@ fun PdfSplitterScreen(
                             }
                         },
                         isProcessing = uiState is UiState.Processing,
+                        enabled = pageRange.isEmpty() || 
+                                 viewModel.isValidPageRange(pageRange, pdfInfo!!.numberOfPages),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -327,11 +339,12 @@ private fun InfoRow(
 private fun ProcessButton(
     onClick: () -> Unit,
     isProcessing: Boolean,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     ElevatedButton(
         onClick = onClick,
-        enabled = !isProcessing,
+        enabled = enabled && !isProcessing,
         modifier = modifier
     ) {
         if (isProcessing) {
@@ -356,6 +369,13 @@ private fun ProcessButton(
 @Composable
 private fun StatusMessages(uiState: UiState) {
     when (uiState) {
+        is UiState.Processing -> {
+            ProcessingProgress(
+                currentPage = uiState.currentPage,
+                totalPages = uiState.totalPages,
+                currentFileName = uiState.currentFileName
+            )
+        }
         is UiState.Success -> {
             ElevatedCard(
                 modifier = Modifier
@@ -431,4 +451,119 @@ private fun formatFileSize(size: Long): String {
 
 private fun formatDate(dateStr: String): String {
     return dateStr
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PageRangeSelector(
+    totalPages: Int,
+    onRangeChange: (String) -> Unit,
+    rangeText: String,
+    isValid: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        OutlinedTextField(
+            value = rangeText,
+            onValueChange = onRangeChange,
+            label = { Text("Page Range") },
+            placeholder = { Text("e.g., 1-3, 5, 7-9") },
+            supportingText = {
+                Text(
+                    "Enter page numbers or ranges (1-$totalPages)",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            },
+            isError = rangeText.isNotEmpty() && !isValid,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            leadingIcon = {
+                Icon(
+                    Icons.Rounded.Pages,
+                    contentDescription = null
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun ProcessingProgress(
+    currentPage: Int,
+    totalPages: Int,
+    currentFileName: String
+) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Processing PDF",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            LinearProgressIndicator(
+                progress = currentPage.toFloat() / totalPages,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Page $currentPage of $totalPages",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "${(currentPage.toFloat() / totalPages * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Creating $currentFileName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
 }

@@ -33,6 +33,43 @@ class PdfViewModel : ViewModel() {
     private val _pdfInfo = MutableStateFlow<PdfInfo?>(null)
     val pdfInfo: StateFlow<PdfInfo?> = _pdfInfo
 
+    private val _pageRange = MutableStateFlow("")
+    val pageRange: StateFlow<String> = _pageRange
+
+    fun updatePageRange(range: String) {
+        _pageRange.value = range
+    }
+
+    fun isValidPageRange(range: String, totalPages: Int): Boolean {
+        if (range.isEmpty()) return false
+        return try {
+            val pageNumbers = parsePageRange(range, totalPages)
+            pageNumbers.isNotEmpty() && pageNumbers.all { it in 1..totalPages }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun parsePageRange(range: String, totalPages: Int): Set<Int> {
+        val pages = mutableSetOf<Int>()
+        range.split(",").forEach { part ->
+            part.trim().let {
+                if (it.contains("-")) {
+                    val (start, end) = it.split("-").map { num -> num.trim().toInt() }
+                    if (start <= end && start > 0 && end <= totalPages) {
+                        pages.addAll(start..end)
+                    }
+                } else {
+                    val page = it.toInt()
+                    if (page in 1..totalPages) {
+                        pages.add(page)
+                    }
+                }
+            }
+        }
+        return pages
+    }
+
     private fun parsePdfDate(dateStr: String): Calendar? {
         return try {
             // PDF date format: D:YYYYMMDDHHmmSSOHH'mm'
@@ -196,15 +233,12 @@ class PdfViewModel : ViewModel() {
     fun processFile(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _uiState.value = UiState.Processing
-                
-                // Get original file name without extension
                 val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     cursor.moveToFirst()
                     cursor.getString(nameIndex).substringBeforeLast(".")
                 } ?: "unknown"
-                
+
                 val outputDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     // For Android 10 and above, use MediaStore
                     null
@@ -214,17 +248,27 @@ class PdfViewModel : ViewModel() {
                         .also { it.mkdirs() }
                 }
                 
-                // Open PDF document
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val pdfReader = PdfReader(inputStream)
                     val pdfDoc = PdfDocument(pdfReader)
-                    val numberOfPages = pdfDoc.numberOfPages
                     
-                    for (i in 1..numberOfPages) {
+                    val selectedPages = if (_pageRange.value.isNotEmpty()) {
+                        parsePageRange(_pageRange.value, pdfDoc.numberOfPages)
+                    } else {
+                        (1..pdfDoc.numberOfPages).toSet()
+                    }
+
+                    for ((index, pageNum) in selectedPages.withIndex()) {
+                        _uiState.value = UiState.Processing(
+                            currentPage = index + 1,
+                            totalPages = selectedPages.size,
+                            currentFileName = "page_${pageNum}.pdf"
+                        )
+
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             // Save using MediaStore for Android 10+
                             val contentValues = ContentValues().apply {
-                                put(MediaStore.MediaColumns.DISPLAY_NAME, "page_${i}.pdf")
+                                put(MediaStore.MediaColumns.DISPLAY_NAME, "page_${pageNum}.pdf")
                                 put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
                                 put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/PDF Splitter/$fileName")
                             }
@@ -238,23 +282,23 @@ class PdfViewModel : ViewModel() {
                                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                                     val pdfWriter = PdfWriter(outputStream)
                                     val newPdf = PdfDocument(pdfWriter)
-                                    pdfDoc.copyPagesTo(i, i, newPdf)
+                                    pdfDoc.copyPagesTo(pageNum, pageNum, newPdf)
                                     newPdf.close()
                                 }
                             }
                         } else {
                             // Legacy way for older Android versions
-                            val outputFile = File(outputDir, "page_${i}.pdf")
+                            val outputFile = File(outputDir, "page_${pageNum}.pdf")
                             val pdfWriter = PdfWriter(FileOutputStream(outputFile))
                             val newPdf = PdfDocument(pdfWriter)
-                            pdfDoc.copyPagesTo(i, i, newPdf)
+                            pdfDoc.copyPagesTo(pageNum, pageNum, newPdf)
                             newPdf.close()
                         }
                     }
                     
                     pdfDoc.close()
                     _uiState.value = UiState.Success(
-                        numberOfPages,
+                        selectedPages.size,
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) 
                             "${Environment.DIRECTORY_DOCUMENTS}/PDF Splitter/$fileName"
                         else 
@@ -270,7 +314,11 @@ class PdfViewModel : ViewModel() {
 
 sealed class UiState {
     object Initial : UiState()
-    object Processing : UiState()
+    data class Processing(
+        val currentPage: Int,
+        val totalPages: Int,
+        val currentFileName: String
+    ) : UiState()
     data class Success(val pageCount: Int, val outputPath: String) : UiState()
     data class Error(val message: String) : UiState()
 }
