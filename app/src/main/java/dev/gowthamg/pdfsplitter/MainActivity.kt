@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.gowthamg.pdfsplitter.ui.theme.PDFSplitterTheme
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +60,25 @@ fun PdfInfoCard(pdfInfo: PdfInfo) {
             )
             
             Spacer(modifier = Modifier.height(8.dp))
+            
+            // PDF Preview
+            pdfInfo.previewBitmap?.let { bitmap ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(8.dp)
+                ) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "PDF Preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             
             InfoRow("Number of Pages", "${pdfInfo.numberOfPages}")
             InfoRow("File Size", formatFileSize(pdfInfo.fileSize))

@@ -22,6 +22,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 
 class PdfViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<UiState>(UiState.Initial)
@@ -57,6 +60,31 @@ class PdfViewModel : ViewModel() {
     fun loadPdfInfo(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Create a temporary file to get FileDescriptor
+                val tempFile = File(context.cacheDir, "temp.pdf")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Generate preview using PdfRenderer
+                val preview = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                    val renderer = PdfRenderer(fd)
+                    renderer.openPage(0).use { page ->
+                        // Create bitmap with appropriate size
+                        val bitmap = Bitmap.createBitmap(
+                            page.width,
+                            page.height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        // Render the page onto the bitmap
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmap
+                    }
+                }
+
+                // Get PDF metadata
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val pdfReader = PdfReader(inputStream)
                     val pdfDoc = PdfDocument(pdfReader)
@@ -103,11 +131,16 @@ class PdfViewModel : ViewModel() {
                             } ?: "Unknown"
                         } catch (e: Exception) {
                             "Unknown"
-                        }
+                        },
+                        previewBitmap = preview
                     )
                     
                     pdfDoc.close()
                 }
+                
+                // Clean up temp file
+                tempFile.delete()
+                
             } catch (e: Exception) {
                 _pdfInfo.value = null
             }
@@ -204,5 +237,6 @@ data class PdfInfo(
     val creator: String,
     val producer: String,
     val creationDate: String,
-    val modificationDate: String
+    val modificationDate: String,
+    val previewBitmap: Bitmap? = null
 ) 
