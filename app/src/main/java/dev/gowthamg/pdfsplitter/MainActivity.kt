@@ -1,6 +1,5 @@
 package dev.gowthamg.pdfsplitter
 
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.Manifest
@@ -39,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.rounded.*
@@ -48,6 +48,10 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+
+import android.provider.DocumentsContract
+import android.os.Environment
+import android.widget.Toast
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -421,6 +425,8 @@ private fun StatusMessages(
     uiState: UiState,
     splitPdfs: List<SplitPdfInfo> = emptyList()
 ) {
+    val context = LocalContext.current
+
     when (uiState) {
         is UiState.Processing -> {
             ProcessingProgress(
@@ -430,39 +436,101 @@ private fun StatusMessages(
             )
         }
         is UiState.Success -> {
-            Column {
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    // Success Icon with background
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Rounded.CheckCircle,
+                            Icons.Rounded.TaskAlt,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Successfully split into ${uiState.pageCount} pages",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Success Title
+                    Text(
+                        text = "PDF Split Complete",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Success Details
+                    Text(
+                        text = "${uiState.pageCount} pages have been extracted",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Output Path with icon
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Folder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            "Saved to: ${uiState.outputPath}",
+                            text = uiState.outputPath,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    if (splitPdfs.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(24.dp))
                         
-                        if (splitPdfs.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            SharePdfsButton(splitPdfs)
+                        // Share Button
+                        FilledTonalButton(
+                            onClick = {
+                                val shareIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND_MULTIPLE
+                                    type = "application/pdf"
+                                    putParcelableArrayListExtra(
+                                        Intent.EXTRA_STREAM,
+                                        ArrayList(splitPdfs.map { it.uri })
+                                    )
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share PDFs"))
+                            }
+                        ) {
+                            Icon(
+                                Icons.Rounded.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Share All")
                         }
                     }
                 }
